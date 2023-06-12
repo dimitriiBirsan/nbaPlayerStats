@@ -29,5 +29,10 @@
         public Meta Meta { get; set; }
     }
 
+    public class ScrapedPlayer
+    {
+        public string Name { get; set; }
+        public string HeadShot { get; set; }
+    }
 
 }
