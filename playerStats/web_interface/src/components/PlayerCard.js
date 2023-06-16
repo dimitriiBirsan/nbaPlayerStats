@@ -11,8 +11,13 @@ function PlayerCard() {
 
 
   useEffect(() => {
-    // Fetch players data from your backend API
-    axios.get('/api/GetTrendiestPlayer') // Replace this with your actual API endpoint
+    const email = localStorage.getItem('email');
+    let data = {}
+    console.log(email)
+    if(email){
+      data.email = email
+    }
+    axios.get('/api/GetTrendiestPlayer',{params: data}) 
       .then(response => {
         setPlayers(response.data);
       })
@@ -23,10 +28,8 @@ function PlayerCard() {
 
   const handleLogin = (email) => {
     if (email) {
-      // Send a request to your backend to "send" the login email
-      // For now, just log a message to the console
-      console.log(`Login link sent to ${email}`);
 
+      localStorage.setItem('email', email);
       axios.post("/api/Login", {email})
         .then(response => {
           setLoggedIn(true);
@@ -50,17 +53,23 @@ function PlayerCard() {
   };
 
   const handleFavoriteClick = (playerId, isFavorited) => {
-
-    if (!loggedIn) {
+    const email = localStorage.getItem('email');
+    if (!loggedIn && !email ) {
       axios.get("/api/checkIfUserIsLoggedIn")
         .then( (response) => {
           setLoggedIn(true);
           console.log(response)
         } ).catch(e => setShowModal(true))
       return
+    }else {
+      setLoggedIn(true)
     }
-    axios.post('/api/AddFavoritePlayer', { playerId })
-      .then(response => {
+    axios({
+      method: 'post',
+      url: '/api/AddFavoritePlayer',
+      data: { id:playerId, email },
+      withCredentials: true
+    }).then(response => {
         setPlayers(players.map(player =>
           player.player.id === playerId
             ? { ...player, isFavorited: !isFavorited }
