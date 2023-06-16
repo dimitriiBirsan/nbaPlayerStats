@@ -10,58 +10,85 @@ namespace playerStats.Services
     {
         private readonly HttpClient _httpClient;
         private readonly PlayerContext _playerContext;
-        private readonly IHttpContextAccessor _httpContextAccessor;
 
 
-        public PlayerService(HttpClient httpClient, PlayerContext context, IHttpContextAccessor httpContextAccessor)
+        public PlayerService(HttpClient httpClient, PlayerContext context)
         {
             _httpClient = httpClient;
             _playerContext = context;
-            _httpContextAccessor = httpContextAccessor;
         }
 
-        public async Task<IEnumerable<Player>?> GetAllPlayersAsync()
+        public async Task<List<Stats>> GetStatsAsync()
         {
-            var allPlayers = new List<Player>();
+            var playerStatistics = new List<Stats>();
             var currentPage = 1;
             var totalPages = 0;
-
             do
             {
-                var response = await _httpClient.GetAsync($"https://www.balldontlie.io/api/v1/players?page={currentPage}&per_page=100");
-
+                var response = await _httpClient.GetAsync($"https://www.balldontlie.io/api/v1/stats?seasons[]=2022&per_page=100&page={currentPage}");
                 if(response.IsSuccessStatusCode)
                 {
-                    var pageData = await response.Content.ReadFromJsonAsync<PlayerResponse>();
-                    allPlayers.AddRange(pageData.Data);
+                    var pageData = await response.Content.ReadFromJsonAsync<StatsResponse>();
+                    playerStatistics.AddRange(pageData.Data);
 
                     totalPages = pageData.Meta.Total_pages;
                     currentPage = pageData.Meta.Next_page;
-
-                    // Add a delay of 1 second before fetching the next page
-                    //if (currentPage <= totalPages)
+                    if (currentPage <= totalPages)
                     {
                         await Task.Delay(TimeSpan.FromSeconds(1));
                     }
                 }
-                else
-                {
-                    throw new Exception("Error ffetching player data");
-                };
             } while (currentPage < totalPages);
-            //if(response.IsSuccessStatusCode)
-            //{
-            //    var players = await response.Content.ReadFromJsonAsync<IEnumerable<Player>>();
-            //    return players;
-            //}
-            Console.WriteLine(allPlayers);
-            return allPlayers;
+            return playerStatistics;
         }
-        public async Task GetAndSaveAllPlayersAsync()
+
+        public async Task<IResult> GetAndSaveStatsAsync()
         {
-            var players = await GetAllPlayersAsync();
-            _playerContext.Players.AddRange(players);
+            var playerStatistics = await GetStatsAsync();
+            var teams = new List<Teams>();
+            var players = new List<Player>();
+            var games = new List<Games>();
+            var stats = new List<Stats>();
+
+            foreach (var record in playerStatistics)
+            {
+                var player = players.FirstOrDefault(p => p.Id == record.Player.Id);
+                if (player == null)
+                {
+                    players.Add(record.Player);
+                }
+
+                var game = games.FirstOrDefault(g => g.Id == record.Game.Id);
+                if (game == null)
+                {
+                    games.Add(record.Game);
+                }
+
+                var team = teams.FirstOrDefault(t => t.Id == record.Team.Id);
+                if (team == null)
+                {
+
+                    teams.Add(record.Team);
+                }
+
+
+                stats.Add(record);
+            }
+            await InsertIfNotExistsAsync(_playerContext.Teams, teams);
+            await InsertIfNotExistsAsync(_playerContext.Players, players);
+            await InsertIfNotExistsAsync(_playerContext.Games, games);
+
+            _playerContext .Stats.AddRange(stats);
+
             await _playerContext.SaveChangesAsync();
+
+            return Results.Ok();
+        }
+        async Task InsertIfNotExistsAsync<T>(DbSet<T> dbSet, List<T> entities) where T : class
+        {
+            var existingEntities = await dbSet.ToListAsync();
+            var newEntities = entities.Except(existingEntities);
+            dbSet.AddRange(newEntities);
         }
 
         public async Task<List<Stats>> GetStatsForCurrentSeasonAsync()
@@ -81,6 +108,12 @@ namespace playerStats.Services
 
                     totalPages = pageData.Meta.Total_pages;
                     currentPage = pageData.Meta.Next_page;
+                    // Add a delay of 1 second before fetching the next page
+                    if (currentPage <= totalPages)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(1));
+                    }
+
 
                     foreach (var stat in pageData.Data)
                     {
@@ -125,11 +158,7 @@ namespace playerStats.Services
                         await _playerContext.SaveChangesAsync();
                     }
 
-                    // Add a delay of 1 second before fetching the next page
-                    if (currentPage <= totalPages)
-                    {
-                        await Task.Delay(TimeSpan.FromSeconds(1));
-                    }
+ 
                 }
                 else
                 {
@@ -140,9 +169,13 @@ namespace playerStats.Services
             return playerStatistics;
         }
 
-        public async Task<List<PlayerAverage>> GetTrendiestPlayersAsync()
+        public async Task<List<PlayerAverage>> GetTrendiestPlayersAsync(string? userEmail, HttpContext httpContext )
         {
-            var userEmail = _httpContextAccessor.HttpContext.Session.GetString("email");
+ 
+            if (userEmail == null)
+            {
+                userEmail = httpContext.Session.GetString("email");
+            }
             var currentSeason = 2022;
             var statsForLastGames = 5;
 
@@ -155,7 +188,6 @@ namespace playerStats.Services
                     favoritePlayerIds = new HashSet<int>(user.FavoritePlayers.Select(fp => fp.Id));
                 }
             }
-
             var statsRecords = await _playerContext.Stats
                 .Include(s => s.Game)
                 .Include(s => s.Player)

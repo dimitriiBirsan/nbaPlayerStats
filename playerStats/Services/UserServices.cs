@@ -12,13 +12,12 @@ namespace playerStats.Services
     public class UserService
     {
         
-        private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly PlayerContext _context;
 
-        public UserService(PlayerContext context, IHttpContextAccessor httpContext)
+        public UserService(PlayerContext context)
         {
             _context = context;
-            _httpContextAccessor = httpContext;
+           
         }
         public async Task<User> GetUserByEmailAsync(string email)
         {
@@ -34,11 +33,16 @@ namespace playerStats.Services
             return user;
         }
 
-        public async Task<IResult> AddFavoritePlayerAsync( Player player)
+        public async Task<IResult> AddFavoritePlayerAsync(AddFavoritePlayer _favoritePlayer, HttpContext httpContext)
 
         {
+            var email = _favoritePlayer.Email;
+            if (email == null)
+            {
+              email = httpContext.Session.GetString("email");
 
-            var email = _httpContextAccessor.HttpContext.Session.GetString("email");
+            }
+
             Debug.WriteLine(email);
             if(email == null)
             {
@@ -47,11 +51,12 @@ namespace playerStats.Services
             var user = await GetUserByEmailAsync(email);
             if (user !=null)
             {
-                var favoritePlayer = user.FavoritePlayers.FirstOrDefault(p => p.Id == player.Id);
+                var favoritePlayer = user.FavoritePlayers?.FirstOrDefault(p => p.Id == _favoritePlayer.Id);
+                var player = await _context.Players.FindAsync(_favoritePlayer.Id);
                 if (favoritePlayer != null)
                 {
                     // Player is already a favorite, so remove it
-                    user.FavoritePlayers.Remove(favoritePlayer);
+                    user.FavoritePlayers.Remove(player);
                 }
                 else
                 {
@@ -64,7 +69,7 @@ namespace playerStats.Services
             return Results.Ok();
         }
 
-        public async Task<IResult> LoginAsync(string email )
+        public async Task<IResult> LoginAsync(string email, HttpContext httpContext )
         {
 
             if (string.IsNullOrEmpty(email))
@@ -75,10 +80,7 @@ namespace playerStats.Services
             }
 
             var existingUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
-            Debug.WriteLine(email);
-            _httpContextAccessor.HttpContext.Session.SetString("email", email);
-            _httpContextAccessor.HttpContext.Session.CommitAsync().Wait();
-            Debug.WriteLine(_httpContextAccessor.HttpContext.Session);
+            httpContext.Session.SetString("email", email);
 
             if (existingUser != null)
             {
@@ -93,11 +95,11 @@ namespace playerStats.Services
             return Results.Ok();
         }
 
-        public async Task<IResult> CheckIfUserIsLoggedIn ()
+        public async Task<IResult> CheckIfUserIsLoggedIn (HttpContext httpContext)
         {
 
-            var email = _httpContextAccessor.HttpContext.Session.GetString("email");
-            Debug.WriteLine(_httpContextAccessor.HttpContext.Session);
+            var email = httpContext.Session.GetString("email");
+            Debug.WriteLine(httpContext.Session);
             if(email == null)
             {
                 Debug.WriteLine("no email");

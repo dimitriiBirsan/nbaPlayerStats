@@ -14,6 +14,12 @@
 
     }
 
+    public class AddFavoritePlayer
+    {
+        public int Id { get; set; }
+        public string? Email { get; set; }
+    }
+
     public class Meta
     {
         public int Total_pages { get; set; }
